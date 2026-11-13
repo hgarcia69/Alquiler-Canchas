@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ArenaPro | Sistema de Reservas y Alquiler de Canchas de Fútbol</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- FontAwesome para iconografía deportiva y UI -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+    }
+
+    /* Patrón sutil de césped en el encabezado */
+    .pitch-header {
+      background: linear-gradient(135deg, #064e3b 0%, #0f172a 60%, #1e293b 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    .pitch-header::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(rgba(16, 185, 129, 0.12) 1px, transparent 1px);
+      background-size: 20px 20px;
+      pointer-events: none;
+    }
+
+    /* Scrollbar personalizada para la tabla del calendario */
+    .calendar-scroll::-webkit-scrollbar {
+      height: 8px;
+      width: 8px;
+    }
+    .calendar-scroll::-webkit-scrollbar-track {
+      background: #1e293b;
+      border-radius: 8px;
+    }
+    .calendar-scroll::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 8px;
+    }
+    .calendar-scroll::-webkit-scrollbar-thumb:hover {
+      background: #10b981;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-emerald-500 selection:text-white">
+
+  <!-- Notificación Toast Flotante (Reemplaza alert/confirm nativos) -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-3 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <!-- Barra de Navegación Superior -->
+  <header class="pitch-header border-b border-slate-800 sticky top-0 z-30 shadow-xl">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        
+        <!-- Logo y Título -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-950/50">
+              <i class="fa-solid fa-futbol text-2xl"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h1 class="text-xl font-extrabold tracking-tight text-white">Arena<span class="text-emerald-400">Pro</span></h1>
+                <span id="connection-badge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span> Conectando...
+                </span>
+              </div>
+              <p class="text-xs text-slate-400">Gestión Semanal y Alquiler de Canchas Sintéticas</p>
+            </div>
+          </div>
+
+          <!-- Botón Info Despliegue GitHub/Firebase (Móvil) -->
+          <button onclick="openModal('deploy-modal')" class="md:hidden p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="Guía GitHub + Firebase">
+            <i class="fa-brands fa-github text-lg"></i>
+          </button>
+        </div>
+
+        <!-- Controles de Rol, Cuenta y Despliegue -->
+        <div class="flex flex-wrap items-center gap-2.5">
+          
+          <!-- Selector de Vista / Rol (Para pruebas rápidas y operación real) -->
+          <div class="bg-slate-900/90 p-1 rounded-xl border border-slate-700/80 flex items-center shadow-inner">
+            <button id="btn-role-user" onclick="switchRole('user')" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 bg-emerald-600 text-white shadow">
+              <i class="fa-solid fa-user"></i> Vista Cliente
+            </button>
+            <button id="btn-role-admin" onclick="requestAdminAccess()" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 text-slate-400 hover:text-white">
+              <i id="admin-lock-icon" class="fa-solid fa-lock text-amber-400"></i> Administrador
+              <span id="pending-counter-badge" class="hidden ml-1 px-1.5 py-0.2 bg-amber-500 text-slate-950 font-bold rounded-full text-[10px]">0</span>
+            </button>
+          </div>
+
+          <!-- Estado de Sesión Firebase Auth -->
+          <button onclick="openModal('auth-modal')" class="px-3.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium flex items-center gap-2 transition">
+            <i class="fa-solid fa-circle-user text-emerald-400 text-sm"></i>
+            <span id="user-display-name" class="max-w-[130px] truncate">Invitado</span>
+          </button>
+
+          <!-- Botón Guía GitHub + Firebase Hosting -->
+          <button onclick="openModal('deploy-modal')" class="hidden md:flex px-3.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium items-center gap-2 transition">
+            <i class="fa-brands fa-github text-sm"></i>
+            <span>Nube & GitHub</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Contenido Principal -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Banner Informativo de la Semana Actual y Leyenda -->
+    <section class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-lg flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      <div class="space-y-1">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-bold uppercase tracking-wider">
+            <i class="fa-regular fa-calendar-check mr-1"></i> Semana Activa
+          </span>
+          <h2 id="current-week-label" class="text-base sm:text-lg font-bold text-white">Cargando semana...</h2>
+        </div>
+        <p class="text-xs sm:text-sm text-slate-400">
+          Turnos fijos de <span class="text-white font-semibold">2 Horas</span>. Selecciona un bloque <span class="text-emerald-400 font-medium">Disponible</span> para reservar y bloquear temporalmente hasta verificar tu pago.
+        </p>
+      </div>
+
+      <!-- Leyenda de Estados -->
+      <div class="flex flex-wrap items-center gap-3 text-xs font-medium bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
+        <div class="flex items-center gap-2">
+          <span class="w-3.5 h-3.5 rounded-md bg-emerald-500/20 border border-emerald-500 flex items-center justify-center">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          </span>
+          <span class="text-slate-300">Disponible (2h)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-3.5 h-3.5 rounded-md bg-amber-500/25 border border-amber-500 flex items-center justify-center">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+          </span>
+          <span class="text-slate-300">Pendiente Pago</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-3.5 h-3.5 rounded-md bg-rose-500/25 border border-rose-500 flex items-center justify-center">
+            <i class="fa-solid fa-lock text-[8px] text-rose-400"></i>
+          </span>
+          <span class="text-slate-300">Alquilado</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-3.5 h-3.5 rounded-md bg-slate-800/80 border border-slate-700 flex items-center justify-center">
+            <i class="fa-solid fa-ban text-[8px] text-slate-500"></i>
+          </span>
+          <span class="text-slate-400">No Habilitado</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Selector de Cancha e Información de Reglas Horarias -->
+    <div class="bg-slate-900/60 border border-slate-800/90 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="flex items-center gap-2">
+          <label for="court-select" class="text-xs font-bold uppercase tracking-wider text-emerald-400 whitespace-nowrap">
+            <i class="fa-solid fa-futbol mr-1"></i> Cancha:
+          </label>
+          <select id="court-select" onchange="changeCourt(this.value)" class="bg-slate-800 border border-slate-700 text-white text-sm font-semibold rounded-xl px-3.5 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            <option value="cancha-grande">Cancha Sintética Grande (Fútbol 11) — Bloque 2h</option>
+            <option value="cancha-pequena">Cancha Sintética Pequeña (Fútbol 7) — Bloque 2h</option>
+          </select>
+        </div>
+        <span id="court-schedule-hint" class="text-xs text-slate-300 bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl">
+          Lunes a Domingo: habilitada a partir de las 10:00 PM (bloques de 2 horas)
+        </span>
+      </div>
+
+      <!-- Acceso rápido para que el cliente notifique pago de una reserva suya -->
+      <div class="flex items-center gap-2">
+        <button onclick="openMyReservationsModal()" class="w-full sm:w-auto justify-center px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-semibold flex items-center gap-2 transition">
+          <i class="fa-solid fa-receipt"></i> Mis Reservas / Notificar Pago
+        </button>
+      </div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- VISTA 1: CALENDARIO SEMANAL INTERACTIVO (LUNES A DOMINGO)           -->
+    <!-- =================================================================== -->
+    <section id="calendar-section" class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/70">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-table-cells text-emerald-400"></i>
+          <h3 id="calendar-court-title" class="font-bold text-sm sm:text-base text-white">Calendario Semanal • Cancha Sintética Grande (Fútbol 11)</h3>
+        </div>
+        <span class="text-xs text-emerald-400 font-semibold hidden sm:inline"><i class="fa-regular fa-clock mr-1"></i>Duración por turno: 2 Horas</span>
+      </div>
+
+      <!-- Leyenda de Estados -->
+      <div class="flex flex-wrap items-center gap-3 text-xs font-medium bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
+        <div class="flex items-center gap-2">
+          <span class="w-3.5 h-3.5 rounded-md bg-emerald-500/20 border border-emerald-500 flex items-center justify-center">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          </span>
+          <span class="text-slate-300">Disponible</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-3.5 h-3.5 rounded-md bg-amber-500/25 border border-amber-500 flex items-center justify-center">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+          </span>
+          <span class="text-slate-300">Pendiente de Pago</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-3.5 h-3.5 rounded-md bg-rose-500/25 border border-rose-500 flex items-center justify-center">
+            <i class="fa-solid fa-lock text-[8px] text-rose-400"></i>
+          </span>
+          <span class="text-slate-300">Alquilado / Bloqueado</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Selector de Cancha (Permite escalar a múltiples canchas si se desea) -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <label for="court-select" class="text-xs font-semibold uppercase tracking-wider text-slate-400">Instalación:</label>
+        <select id="court-select" onchange="changeCourt(this.value)" class="bg-slate-800 border border-slate-700 text-white text-sm rounded-xl px-3.5 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          <option value="cancha-1">Cancha Principal - Fútbol 7 (Techada)</option>
+          <option value="cancha-2">Cancha Norte - Fútbol 5 (Césped FIFA)</option>
+        </select>
+      </div>
+
+      <!-- Acceso rápido para que el cliente notifique pago de una reserva suya -->
+      <div class="flex items-center gap-2">
+        <button onclick="openMyReservationsModal()" class="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-semibold flex items-center gap-2 transition">
+          <i class="fa-solid fa-receipt"></i> Mis Reservas / Notificar Pago
+        </button>
+      </div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- VISTA 1: CALENDARIO SEMANAL INTERACTIVO (LUNES A DOMINGO)           -->
+    <!-- =================================================================== -->
+    <section id="calendar-section" class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/70">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-table-cells text-emerald-400"></i>
+          <h3 class="font-bold text-sm sm:text-base text-white">Calendario Semanal de Disponibilidad</h3>
+        </div>
+        <span class="text-xs text-slate-400 hidden sm:inline">Sincronizado en tiempo real con la nube</span>
+      </div>
+
+      <!-- Contenedor Responsivo con Scroll Horizontal en Móviles -->
+      <div class="overflow-x-auto calendar-scroll">
+        <table class="w-full border-collapse min-w-[860px]">
+          <thead>
+            <tr id="calendar-header-row" class="bg-slate-950/90 border-b border-slate-800 text-xs uppercase tracking-wider text-slate-400">
+              <th class="p-3.5 text-left font-bold w-28 sticky left-0 bg-slate-950 z-10 border-r border-slate-800">Horario</th>
+              <!-- Los días Lunes a Domingo con fecha exacta se inyectan dinámicamente -->
+            </tr>
+          </thead>
+          <tbody id="calendar-body" class="divide-y divide-slate-800/80 text-sm">
+            <!-- Filas horarias (08:00 AM - 10:00 PM) generadas por JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- VISTA 2: PANEL DE ADMINISTRACIÓN (VISIBLE AL ACTIVAR ROL ADMIN)     -->
+    <!-- =================================================================== -->
+    <section id="admin-panel" class="hidden space-y-6">
+      
+      <!-- Barra superior de seguridad del Administrador -->
+      <div class="bg-emerald-950/30 border border-emerald-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+            <i class="fa-solid fa-shield-halved"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white">Sesión de Administrador Activa</h3>
+            <p class="text-xs text-slate-400">Tienes permisos para confirmar pagos, bloquear turnos, cambiar la clave y limpiar la semana.</p>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="openModal('change-pin-modal')" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-key text-amber-400"></i> Cambiar Clave Admin
+          </button>
+          <button onclick="logoutAdmin()" class="px-3 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-bold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión Admin
+          </button>
+        </div>
+      </div>
+
+      <!-- Tarjetas de Resumen + Control de Limpieza Semanal -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+          <p class="text-xs text-slate-400 font-medium">Pendientes de Pago</p>
+          <p id="stat-pending" class="text-2xl font-extrabold text-amber-400 mt-1">0</p>
+          <p class="text-[11px] text-slate-500 mt-1">Esperando verificación</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+          <p class="text-xs text-slate-400 font-medium">Alquilados / Bloqueados</p>
+          <p id="stat-confirmed" class="text-2xl font-extrabold text-rose-400 mt-1">0</p>
+          <p class="text-[11px] text-slate-500 mt-1">Pagos verificados</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+          <p class="text-xs text-slate-400 font-medium">Horarios Libres</p>
+          <p id="stat-available" class="text-2xl font-extrabold text-emerald-400 mt-1">0</p>
+          <p class="text-[11px] text-slate-500 mt-1">Disponibles esta semana</p>
+        </div>
+        
+        <!-- Módulo de Reinicio Semanal (Cierre de Domingo) -->
+        <div class="bg-gradient-to-br from-slate-900 to-rose-950/30 border border-rose-500/30 rounded-2xl p-4 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center gap-1.5 text-rose-400 text-xs font-bold uppercase">
+              <i class="fa-solid fa-broom"></i> Cierre de Semana
+            </div>
+            <p class="text-[11px] text-slate-300 mt-1">Limpia los registros al finalizar el domingo para iniciar una nueva semana.</p>
+          </div>
+          <button onclick="openModal('reset-week-modal')" class="mt-3 w-full py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-950/50 transition flex items-center justify-center gap-2">
+            <i class="fa-solid fa-rotate-right"></i> Reiniciar Semana
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabla de Gestión de Solicitudes y Alquileres -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+        <div class="p-4 sm:p-5 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+              <i class="fa-solid fa-list-check text-emerald-400"></i> Gestión de Reservas y Comprobantes de Pago
+            </h3>
+            <p class="text-xs text-slate-400">Verifica las notificaciones de pago de los clientes para bloquear definitivamente el horario o liberar el espacio.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <select id="admin-filter-status" onchange="renderAdminTable()" class="bg-slate-800 border border-slate-700 text-xs text-white rounded-xl px-3 py-2 focus:outline-none">
+              <option value="all">Todos los estados</option>
+              <option value="pending">Solo Pendientes de Pago</option>
+              <option value="confirmed">Solo Confirmados / Bloqueados</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse min-w-[780px]">
+            <thead>
+              <tr class="bg-slate-950/80 border-b border-slate-800 text-[11px] uppercase tracking-wider text-slate-400">
+                <th class="p-3.5">Día y Hora</th>
+                <th class="p-3.5">Cliente / Contacto</th>
+                <th class="p-3.5">Estado</th>
+                <th class="p-3.5">Notificación de Pago</th>
+                <th class="p-3.5 text-right">Acciones de Administrador</th>
+              </tr>
+            </thead>
+            <tbody id="admin-reservations-body" class="divide-y divide-slate-800 text-xs sm:text-sm">
+              <!-- Filas generadas dinámicamente -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Pie de página -->
+  <footer class="border-t border-slate-800/80 bg-slate-950/60 py-4 mt-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+      <p>ArenaPro &copy; 2026 — Sistema de Alquiler y Reservas de Canchas en la Nube.</p>
+      <p class="flex items-center gap-2">
+        <span>ID Sesión: <code id="footer-uid" class="text-slate-400">...</code></span>
+      </p>
+    </div>
+  </footer>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 1: SOLICITAR RESERVA (CLIENTE)                                  -->
+  <!-- ===================================================================== -->
+  <div id="booking-modal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-fade-in">
+      <div class="flex items-start justify-between">
+        <div>
+          <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+            Nueva Solicitud de Cancha
+          </span>
+          <h3 class="text-lg font-bold text-white mt-1.5">Reservar Bloque Horario</h3>
+          <p id="booking-slot-summary" class="text-xs text-emerald-300 font-medium mt-0.5">Lunes • 08:00 AM - 09:00 AM</p>
+        </div>
+        <button onclick="closeModal('booking-modal')" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form id="booking-form" onsubmit="handleBookingSubmit(event)" class="space-y-4">
+        <input type="hidden" id="booking-day-index" />
+        <input type="hidden" id="booking-hour" />
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre y Apellido *</label>
+          <input type="text" id="booking-name" required placeholder="Ej. Carlos Mendoza" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Teléfono / WhatsApp *</label>
+            <input type="tel" id="booking-phone" required placeholder="Ej. 0414-1234567" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Correo Electrónico *</label>
+            <input type="email" id="booking-email" required placeholder="correo@ejemplo.com" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+          </div>
+        </div>
+
+        <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3.5 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+              <i class="fa-solid fa-money-bill-transfer"></i> Notificación de Pago (Opcional ahora)
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-400">
+            Al reservar, el horario se bloqueará temporalmente. Puedes ingresar tu referencia ahora o reportarla más tarde desde <b>"Mis Reservas"</b>.
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Método de Pago</label>
+              <select id="booking-payment-method" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none">
+                <option value="Pendiente por reportar">Reportar luego</option>
+                <option value="Pago Móvil">Pago Móvil</option>
+                <option value="Transferencia Bancaria">Transferencia Bancaria</option>
+                <option value="Zelle / Divisas">Zelle / Divisas</option>
+                <option value="Efectivo en Sede">Efectivo en Sede</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">N° de Referencia / Comprobante</label>
+              <input type="text" id="booking-payment-ref" placeholder="Ej. #849201" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none" />
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-2.5 pt-2">
+          <button type="button" onclick="closeModal('booking-modal')" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition">
+            Cancelar
+          </button>
+          <button type="submit" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-950/60 transition flex items-center gap-2">
+            <i class="fa-solid fa-calendar-plus"></i> Bloquear y Solicitar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 2: DETALLE DE RESERVA / NOTIFICAR PAGO                          -->
+  <!-- ===================================================================== -->
+  <div id="slot-detail-modal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <span id="detail-status-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold">Estado</span>
+          <h3 id="detail-title" class="text-lg font-bold text-white mt-1.5">Detalle del Horario</h3>
+          <p id="detail-subtitle" class="text-xs text-slate-400 mt-0.5"></p>
+        </div>
+        <button onclick="closeModal('slot-detail-modal')" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div id="detail-content" class="bg-slate-950/90 border border-slate-800 rounded-xl p-4 space-y-2 text-xs text-slate-300">
+        <!-- Información dinámica de la reserva -->
+      </div>
+
+      <!-- Formulario para que el usuario notifique o actualice su pago si está pendiente -->
+      <form id="notify-payment-form" onsubmit="handleNotifyPayment(event)" class="hidden space-y-3 border-t border-slate-800 pt-4">
+        <input type="hidden" id="notify-doc-id" />
+        <p class="text-xs font-bold text-amber-400"><i class="fa-solid fa-bell mr-1"></i> Notificar Pago al Administrador</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Método Utilizado</label>
+            <select id="notify-method" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white">
+              <option value="Pago Móvil">Pago Móvil</option>
+              <option value="Transferencia Bancaria">Transferencia Bancaria</option>
+              <option value="Zelle / Divisas">Zelle / Divisas</option>
+              <option value="Efectivo en Sede">Efectivo en Sede</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Referencia / Comprobante *</label>
+            <input type="text" id="notify-ref" required placeholder="N° de operación" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white" />
+          </div>
+        </div>
+        <button type="submit" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition">
+          Enviar Notificación de Pago
+        </button>
+      </form>
+
+      <!-- Acciones directas si el usuario activo es Administrador -->
+      <div id="detail-admin-actions" class="hidden border-t border-slate-800 pt-4 flex flex-wrap gap-2">
+        <button id="detail-btn-confirm" class="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition">
+          <i class="fa-solid fa-check-double mr-1"></i> Verificar Pago y Bloquear
+        </button>
+        <button id="detail-btn-release" class="flex-1 py-2.5 px-3 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-bold transition">
+          <i class="fa-solid fa-trash-can mr-1"></i> Liberar Espacio
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 3: MIS RESERVAS DE LA SEMANA                                    -->
+  <!-- ===================================================================== -->
+  <div id="my-reservations-modal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-ticket text-amber-400"></i> Mis Solicitudes esta Semana
+        </h3>
+        <button onclick="closeModal('my-reservations-modal')" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <div id="my-reservations-list" class="space-y-3 max-h-80 overflow-y-auto pr-1">
+        <!-- Listado generado dinámicamente -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 4: AUTENTICACIÓN FIREBASE AUTH                                  -->
+  <!-- ===================================================================== -->
+  <div id="auth-modal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
+      <div class="flex items-start justify-between">
+        <div>
+          <h3 class="text-lg font-bold text-white">Cuenta y Acceso Firebase</h3>
+          <p class="text-xs text-slate-400 mt-0.5">Inicia sesión con tu correo o continúa con tu sesión segura en la nube.</p>
+        </div>
+        <button onclick="closeModal('auth-modal')" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs space-y-1">
+        <p class="text-slate-400">Usuario conectado actualmente:</p>
+        <p id="auth-current-info" class="font-mono text-emerald-400 break-all">Conectando...</p>
+      </div>
+
+      <form onsubmit="handleEmailAuth(event)" class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Correo Electrónico</label>
+          <input type="email" id="auth-email" required placeholder="usuario@dominio.com" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Contraseña (mín. 6 caracteres)</label>
+          <input type="password" id="auth-password" required minlength="6" placeholder="••••••••" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white" />
+        </div>
+        <div class="grid grid-cols-2 gap-2.5 pt-1">
+          <button type="submit" onclick="setAuthAction('login')" class="py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition">
+            Iniciar Sesión
+          </button>
+          <button type="submit" onclick="setAuthAction('register')" class="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white border border-slate-600 text-xs font-bold transition">
+            Crear Cuenta
+          </button>
+        </div>
+      </form>
+
+      <div class="border-t border-slate-800 pt-3 flex items-center justify-between text-xs">
+        <span class="text-slate-400">¿Acceso administrativo protegido?</span>
+        <button onclick="closeModal('auth-modal'); requestAdminAccess()" class="text-emerald-400 hover:underline font-semibold">
+          Ingresar Clave Admin &rarr;
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 7: ACCESO PROTEGIDO DE ADMINISTRADOR (CLAVE DE SEGURIDAD)       -->
+  <!-- ===================================================================== -->
+  <div id="admin-login-modal" class="fixed inset-0 z-50 hidden bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-amber-500/40 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-5">
+      <div class="flex items-start justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center">
+            <i class="fa-solid fa-user-shield text-lg"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Acceso Administrador</h3>
+            <p class="text-xs text-slate-400">Área restringida de gestión</p>
+          </div>
+        </div>
+        <button onclick="closeModal('admin-login-modal')" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form onsubmit="handleAdminPinSubmit(event)" class="space-y-4">
+        <div>
+          <label for="admin-pin-input" class="block text-xs font-semibold text-slate-300 mb-1.5">Clave de Seguridad *</label>
+          <input type="password" id="admin-pin-input" required placeholder="Ingresa la clave de administrador" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400" />
+          <p class="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
+            <i class="fa-solid fa-circle-info text-amber-400"></i> Clave por defecto: <code class="text-amber-300 font-mono bg-slate-950 px-1.5 py-0.5 rounded">arena2026</code>
+          </p>
+        </div>
+
+        <div class="flex items-center justify-end gap-2">
+          <button type="button" onclick="closeModal('admin-login-modal')" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold">
+            Cancelar
+          </button>
+          <button type="submit" class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-lg transition flex items-center gap-1.5">
+            <i class="fa-solid fa-unlock-keyhole"></i> Desbloquear Panel
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 8: CAMBIAR CLAVE DE ADMINISTRADOR                                -->
+  <!-- ===================================================================== -->
+  <div id="change-pin-modal" class="fixed inset-0 z-50 hidden bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <h3 class="text-base font-bold text-white">Actualizar Clave Admin</h3>
+          <p class="text-xs text-slate-400">Se guardará sincronizada en Firebase.</p>
+        </div>
+        <button onclick="closeModal('change-pin-modal')" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form onsubmit="handleUpdateAdminPin(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Nueva Clave de Administrador (mín. 4 caracteres)</label>
+          <input type="text" id="new-admin-pin-input" required minlength="4" placeholder="Ej. cancha2026" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" onclick="closeModal('change-pin-modal')" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold">Cancelar</button>
+          <button type="submit" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">Guardar Clave</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 5: CONFIRMACIÓN DE REINICIO SEMANAL (CIERRE DE DOMINGO)         -->
+  <!-- ===================================================================== -->
+  <div id="reset-week-modal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-rose-500/40 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center gap-3 text-rose-400">
+        <div class="w-10 h-10 rounded-xl bg-rose-500/15 flex items-center justify-center">
+          <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+        </div>
+        <div>
+          <h3 class="text-lg font-bold text-white">Reiniciar Calendario Semanal</h3>
+          <p class="text-xs text-slate-400">Cierre de semana (Domingo)</p>
+        </div>
+      </div>
+      <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+        Esta acción eliminará todas las reservas pendientes y alquileres confirmados de la semana actual en la base de datos de Firestore, dejando todos los horarios de <b>Lunes a Domingo</b> disponibles para la nueva semana.
+      </p>
+      <div class="flex items-center justify-end gap-2.5 pt-2">
+        <button onclick="closeModal('reset-week-modal')" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold">
+          Cancelar
+        </button>
+        <button onclick="executeWeeklyCleanup()" class="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg">
+          Sí, Limpiar y Comenzar Nueva Semana
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 6: GUÍA DE DESPLIEGUE EN GITHUB Y FIREBASE HOSTING              -->
+  <!-- ===================================================================== -->
+  <div id="deploy-modal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-start justify-between">
+        <div>
+          <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+            CI/CD en la Nube
+          </span>
+          <h3 class="text-lg font-bold text-white mt-1">Despliegue en GitHub + Firebase Hosting</h3>
+        </div>
+        <button onclick="closeModal('deploy-modal')" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs text-slate-300 leading-relaxed">
+        <p>Este archivo único (<code>index.html</code>) está listo para subirse a un repositorio de GitHub y publicarse automáticamente en la nube con Firebase Hosting:</p>
+        
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-2 font-mono text-[11px] text-emerald-300 overflow-x-auto">
+          <p class="text-slate-400"># 1. Subir el código a tu repositorio GitHub</p>
+          <p>git init && git add index.html</p>
+          <p>git commit -m "Sistema de reservas de canchas"</p>
+          <p>git remote add origin https://github.com/TU_USUARIO/canchas-app.git</p>
+          <p>git push -u origin main</p>
+          <p class="text-slate-400 pt-2"># 2. Conectar Firebase Hosting con GitHub Actions</p>
+          <p>npm install -g firebase-tools</p>
+          <p>firebase login</p>
+          <p>firebase init hosting</p>
+          <p class="text-amber-300"># Selecciona: "Set up automatic builds and deploys with GitHub"</p>
+        </div>
+
+        <p class="text-slate-400">
+          Además, el sistema calcula automáticamente el identificador de la semana ISO actual (<code>YYYY-Www</code>), por lo que cada lunes abre un registro limpio sin perder la continuidad operativa.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- LÓGICA DE APLICACIÓN E INTEGRACIÓN FIREBASE (AUTH + FIRESTORE)        -->
+  <!-- ===================================================================== -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { 
+      getAuth, 
+      signInAnonymously, 
+      signInWithCustomToken, 
+      onAuthStateChanged,
+      signInWithEmailAndPassword,
+      createUserWithEmailAndPassword
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { 
+      getFirestore, 
+      collection, 
+      doc, 
+      setDoc, 
+      updateDoc, 
+      deleteDoc, 
+      onSnapshot,
+      getDocs
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // 1. Configuración de Firebase (Soporta variables de entorno inyectadas o configuración propia al desplegar en GitHub)
+    const defaultFirebaseConfig = {
+      apiKey: "alquiler-canchas",
+      authDomain: "alquiler-canchas.firebaseapp.com",
+      projectId: "alquiler-canchas-54845",
+      storageBucket: "alquiler-canchas.appspot.com",
+      messagingSenderId: "000000000000",
+      appId: "1:000000000000:web:000000000000"
+    };
+
+    const firebaseConfig = typeof __firebase_config !== 'undefined' 
+      ? JSON.parse(__firebase_config) 
+      : defaultFirebaseConfig;
+
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'canchas-futbol-app';
+
+    // Inicializar servicios de Firebase
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // 2. Estado Global de la Aplicación
+    const DAYS_OF_WEEK = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+    
+    // Bloques de 2 horas desde las 06:00 PM (18) hasta las 02:00 AM (24 -> 02 AM)
+    const TIME_SLOTS = [18, 20, 22, 24];
+
+    // Configuración de las 2 canchas sintéticas y sus tarifas por bloque de 2 horas
+    const COURTS_CONFIG = {
+      'cancha-grande': {
+        name: 'Cancha Sintética Grande (Fútbol 11)',
+        shortName: 'Fútbol 11 (Grande)',
+        rateLabel: 'Bloque 2 Horas • Fútbol 11',
+        scheduleHint: 'Lunes a Domingo: disponible a partir de las 10:00 PM (bloques de 2 horas).'
+      },
+      'cancha-pequena': {
+        name: 'Cancha Sintética Pequeña (Fútbol 7)',
+        shortName: 'Fútbol 7 (Pequeña)',
+        rateLabel: 'Bloque 2 Horas • Fútbol 7',
+        scheduleHint: 'Lun-Vie: desde 10:00 PM | Sábado: desde 08:00 PM | Domingo: desde 06:00 PM (2h).'
+      }
+    };
+
+    let currentUser = null;
+    let currentRole = 'user'; // 'user' | 'admin'
+    let isAdminAuthenticated = false;
+    let adminAccessPin = 'arena2026'; // Clave por defecto, sincronizable con Firestore
+    let selectedCourt = 'cancha-grande';
+    let authActionMode = 'login';
+    let allReservations = []; // Almacena todos los documentos de la colección en memoria
+    let unsubscribeSnapshot = null;
+
+    // Regla de negocio: Determinar si un bloque de 2 horas está habilitado según cancha y día
+    // dayIndex: 0=Lunes, 1=Martes, 2=Miércoles, 3=Jueves, 4=Viernes, 5=Sábado, 6=Domingo
+    function isSlotEnabled(courtId, dayIndex, startHour) {
+      if (courtId === 'cancha-grande') {
+        // Cancha sintética grande (Fútbol 11): a partir de las 10:00 PM (22:00)
+        return startHour >= 22;
+      }
+      if (courtId === 'cancha-pequena') {
+        if (dayIndex >= 0 && dayIndex <= 4) {
+          // Lunes a Viernes: a partir de las 10:00 PM (22:00)
+          return startHour >= 22;
+        }
+        if (dayIndex === 5) {
+          // Sábado: a partir de las 8:00 PM (20:00)
+          return startHour >= 20;
+        }
+        if (dayIndex === 6) {
+          // Domingo: a partir de las 6:00 PM (18:00)
+          return startHour >= 18;
+        }
+      }
+      return false;
+    }
+
+    // 3. Utilidades de Fechas y Semana ISO (Para limpieza automática al cambiar de semana después del domingo)
+    function getWeekMetadata(referenceDate = new Date()) {
+      const date = new Date(referenceDate.getTime());
+      date.setHours(0, 0, 0, 0);
+      // Ajustar al jueves de la semana actual según estándar ISO-8601
+      date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+      const week1 = new Date(date.getFullYear(), 0, 4);
+      const weekNumber = 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+      const weekKey = `${date.getFullYear()}-W${String(weekNumber).padStart(2, '0')}`;
+
+      // Calcular fechas exactas de Lunes a Domingo de la semana en curso
+      const current = new Date(referenceDate.getTime());
+      const day = current.getDay();
+      const diffToMonday = current.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(current.setDate(diffToMonday));
+
+      const weekDates = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        weekDates.push({
+          dayName: DAYS_OF_WEEK[i],
+          shortDate: d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
+          fullDate: d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        });
+      }
+
+      return {
+        weekKey,
+        weekNumber,
+        year: date.getFullYear(),
+        weekDates,
+        label: `Semana #${weekNumber} (${weekDates[0].shortDate} al ${weekDates[6].shortDate}, ${date.getFullYear()})`
+      };
+    }
+
+    const activeWeek = getWeekMetadata();
+    document.getElementById('current-week-label').textContent = activeWeek.label;
+
+    // Formatear rango de 2 horas (ej. 18 -> 06:00 PM - 08:00 PM, 22 -> 10:00 PM - 12:00 AM, 24 -> 12:00 AM - 02:00 AM)
+    function formatHourRange(startHour) {
+      const format12 = (h) => {
+        const normalized = h % 24;
+        const suffix = normalized >= 12 ? 'PM' : 'AM';
+        const hour12 = normalized % 12 === 0 ? 12 : normalized % 12;
+        return `${String(hour12).padStart(2, '0')}:00 ${suffix}`;
+      };
+      return `${format12(startHour)} - ${format12(startHour + 2)}`;
+    }
+
+    // 4. Sistema de Notificaciones Visuales (Toasts)
+    window.showToast = function(message, type = 'success') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const styles = {
+        success: 'bg-emerald-950/95 border-emerald-500 text-emerald-200',
+        warning: 'bg-amber-950/95 border-amber-500 text-amber-200',
+        error: 'bg-rose-950/95 border-rose-500 text-rose-200',
+        info: 'bg-slate-900/95 border-slate-600 text-slate-200'
+      };
+      const icons = {
+        success: 'fa-circle-check text-emerald-400',
+        warning: 'fa-clock text-amber-400',
+        error: 'fa-circle-exclamation text-rose-400',
+        info: 'fa-circle-info text-sky-400'
+      };
+
+      toast.className = `pointer-events-auto border ${styles[type] || styles.info} px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs sm:text-sm font-medium transition-all duration-300 transform translate-y-2 opacity-0`;
+      toast.innerHTML = `
+        <i class="fa-solid ${icons[type] || icons.info} text-base"></i>
+        <span class="flex-1">${message}</span>
+      `;
+      container.appendChild(toast);
+
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      });
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    };
+
+    // 5. Inicialización de Autenticación Firebase (Regla 3: Auth antes de cualquier consulta Firestore)
+    async function initFirebaseAuth() {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error("Error de autenticación inicial:", error);
+        showToast("Error conectando con el servicio de autenticación.", "error");
+      }
+    }
+
+    onAuthStateChanged(auth, (user) => {
+      currentUser = user;
+      const badge = document.getElementById('connection-badge');
+      const display = document.getElementById('user-display-name');
+      const footerUid = document.getElementById('footer-uid');
+      const authInfo = document.getElementById('auth-current-info');
+
+      if (user) {
+        badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30";
+        badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> En línea`;
+        display.textContent = user.email ? user.email.split('@')[0] : 'Cliente Activo';
+        footerUid.textContent = user.uid;
+        authInfo.textContent = user.email ? `${user.email} (${user.uid})` : `Sesión Invitado (${user.uid})`;
+
+        // Suscribirse a Firestore una vez autenticado
+        subscribeToReservations();
+        subscribeToAdminConfig();
+      } else {
+        badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-500/15 text-rose-400 border border-rose-500/30";
+        badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span> Desconectado`;
+      }
+    });
+
+    // 6. Suscripción en Tiempo Real a Firestore (Reglas 1 y 2: Ruta estricta y consulta simple)
+    function getReservationsCollectionRef() {
+      return collection(db, 'artifacts', appId, 'public', 'data', 'reservas_canchas');
+    }
+
+    function getAdminConfigDocRef() {
+      return doc(db, 'artifacts', appId, 'public', 'data', 'configuracion_sistema', 'admin_security');
+    }
+
+    function subscribeToAdminConfig() {
+      if (!currentUser) return;
+      onSnapshot(getAdminConfigDocRef(), (docSnap) => {
+        if (docSnap.exists() && docSnap.data().pin) {
+          adminAccessPin = docSnap.data().pin;
+        }
+      }, (err) => {
+        console.warn("Usando clave administrativa local:", err);
+      });
+    }
+
+    function subscribeToReservations() {
+      if (!currentUser) return;
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+
+      const colRef = getReservationsCollectionRef();
+      unsubscribeSnapshot = onSnapshot(colRef, (snapshot) => {
+        const docs = [];
+        snapshot.forEach((docSnap) => {
+          docs.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        allReservations = docs;
+        renderCalendar();
+        renderAdminTable();
+        updateStats();
+      }, (error) => {
+        console.error("Error escuchando Firestore:", error);
+        showToast("Error de sincronización en tiempo real con la base de datos.", "error");
+      });
+    }
+
+    // Filtrar reservas correspondientes a la semana activa y cancha seleccionada
+    function getActiveWeekReservations() {
+      return allReservations.filter(r => r.weekKey === activeWeek.weekKey && r.courtId === selectedCourt);
+    }
+
+    // 7. Renderizado del Calendario Semanal (Lunes a Domingo)
+    function renderCalendar() {
+      const headerRow = document.getElementById('calendar-header-row');
+      const tbody = document.getElementById('calendar-body');
+
+      // Construir encabezados de días (Lunes a Domingo)
+      headerRow.innerHTML = `
+        <th class="p-3.5 text-left font-bold w-32 sticky left-0 bg-slate-950 z-10 border-r border-slate-800 text-slate-300">
+          Horario
+        </th>
+      `;
+      activeWeek.weekDates.forEach((d, idx) => {
+        headerRow.innerHTML += `
+          <th class="p-3 text-center min-w-[115px] border-r border-slate-800/60 last:border-r-0">
+            <div class="font-extrabold text-white text-xs">${d.dayName}</div>
+            <div class="text-[11px] text-emerald-400 font-medium mt-0.5">${d.shortDate}</div>
+          </th>
+        `;
+      });
+
+      const weekReservations = getActiveWeekReservations();
+      tbody.innerHTML = '';
+
+      TIME_SLOTS.forEach((hour) => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-800/30 transition-colors";
+
+        // Columna fija de la hora (Bloques de 2 horas)
+        let rowHtml = `
+          <td class="p-3 text-xs font-bold text-slate-300 sticky left-0 bg-slate-900 z-10 border-r border-slate-800 whitespace-nowrap">
+            <div>${formatHourRange(hour)}</div>
+            <div class="text-[10px] font-medium text-emerald-400/80 mt-0.5">Turno de 2 Horas</div>
+          </td>
+        `;
+
+        // Celdas para cada día (0 = Lunes ... 6 = Domingo)
+        for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
+          const enabled = isSlotEnabled(selectedCourt, dayIdx, hour);
+
+          if (!enabled) {
+            // ESTADO: FRANGIA NO HABILITADA SEGÚN REGLA DE CANCHA/DÍA
+            rowHtml += `
+              <td class="p-1.5 border-r border-slate-800/60 last:border-r-0">
+                <div class="w-full h-16 rounded-xl bg-slate-950/70 border border-slate-800/70 text-slate-600 flex flex-col items-center justify-center px-1.5 text-center select-none">
+                  <span class="text-[11px] font-semibold flex items-center gap-1">
+                    <i class="fa-solid fa-ban text-[10px]"></i> No habilitado
+                  </span>
+                  <span class="text-[9px] text-slate-600 mt-0.5">Fuera de franja</span>
+                </div>
+              </td>
+            `;
+            continue;
+          }
+
+          const reservation = weekReservations.find(r => r.dayIndex === dayIdx && r.hour === hour);
+
+          if (!reservation) {
+            // ESTADO: DISPONIBLE (Verde - Bloque de 2 horas)
+            rowHtml += `
+              <td class="p-1.5 border-r border-slate-800/60 last:border-r-0">
+                <button onclick="openBookingModal(${dayIdx}, ${hour})" 
+                  class="w-full h-16 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/25 border border-emerald-500/30 hover:border-emerald-400 text-emerald-300 transition-all flex flex-col items-center justify-center gap-0.5 group cursor-pointer">
+                  <span class="text-xs font-bold group-hover:scale-105 transition-transform">Disponible</span>
+                  <span class="text-[10px] text-emerald-400/80">+ Reservar (2h)</span>
+                </button>
+              </td>
+            `;
+          } else if (reservation.status === 'pending') {
+            // ESTADO: RESERVADO / PENDIENTE DE PAGO (Ámbar - Bloqueado temporalmente)
+            const hasPaymentNotice = reservation.paymentRef && reservation.paymentRef.trim() !== '';
+            rowHtml += `
+              <td class="p-1.5 border-r border-slate-800/60 last:border-r-0">
+                <button onclick="openSlotDetailModal('${reservation.id}')" 
+                  class="w-full h-16 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/50 text-amber-300 transition-all flex flex-col items-center justify-center px-1.5 text-center cursor-pointer relative">
+                  <span class="text-[11px] font-bold leading-tight flex items-center gap-1">
+                    <i class="fa-solid fa-clock text-[10px]"></i> Pendiente
+                  </span>
+                  <span class="text-[10px] text-amber-200/80 truncate max-w-full">
+                    ${hasPaymentNotice ? 'Pago reportado' : 'Esperando pago'}
+                  </span>
+                </button>
+              </td>
+            `;
+          } else {
+            // ESTADO: ALQUILADO / BLOQUEADO CONFIRMADO (Rojo/Pizarra)
+            rowHtml += `
+              <td class="p-1.5 border-r border-slate-800/60 last:border-r-0">
+                <button onclick="openSlotDetailModal('${reservation.id}')" 
+                  class="w-full h-16 rounded-xl bg-rose-950/50 hover:bg-rose-900/50 border border-rose-500/40 text-rose-300 transition-all flex flex-col items-center justify-center px-1.5 text-center cursor-pointer">
+                  <span class="text-[11px] font-bold leading-tight flex items-center gap-1">
+                    <i class="fa-solid fa-lock text-[10px]"></i> Alquilado
+                  </span>
+                  <span class="text-[10px] text-rose-200/70 truncate max-w-full">
+                    ${reservation.customerName}
+                  </span>
+                </button>
+              </td>
+            `;
+          }
+        }
+
+        tr.innerHTML = rowHtml;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // 8. Flujo de Reserva del Cliente
+    window.openBookingModal = function(dayIndex, hour) {
+      if (!currentUser) {
+        showToast("Conectando sesión, intenta en un segundo...", "warning");
+        return;
+      }
+      if (!isSlotEnabled(selectedCourt, dayIndex, hour)) {
+        showToast("Este bloque horario no está habilitado para esta cancha.", "error");
+        return;
+      }
+      const dayInfo = activeWeek.weekDates[dayIndex];
+      const courtInfo = COURTS_CONFIG[selectedCourt];
+      document.getElementById('booking-day-index').value = dayIndex;
+      document.getElementById('booking-hour').value = hour;
+      document.getElementById('booking-slot-summary').textContent = `${courtInfo.shortName} • ${dayInfo.dayName} ${dayInfo.fullDate} • ${formatHourRange(hour)} (2 Horas)`;
+      
+      // Pre-llenar correo si inició sesión con email
+      if (currentUser.email) {
+        document.getElementById('booking-email').value = currentUser.email;
+      }
+      openModal('booking-modal');
+    };
+
+    window.handleBookingSubmit = async function(event) {
+      event.preventDefault();
+      if (!currentUser) return;
+
+      const dayIndex = parseInt(document.getElementById('booking-day-index').value, 10);
+      const hour = parseInt(document.getElementById('booking-hour').value, 10);
+      const customerName = document.getElementById('booking-name').value.trim();
+      const customerPhone = document.getElementById('booking-phone').value.trim();
+      const customerEmail = document.getElementById('booking-email').value.trim();
+      const paymentMethod = document.getElementById('booking-payment-method').value;
+      const paymentRef = document.getElementById('booking-payment-ref').value.trim();
+
+      // ID determinista por semana, cancha, día y hora para evitar colisiones simultáneas
+      const docId = `${activeWeek.weekKey}_${selectedCourt}_d${dayIndex}_h${hour}`;
+
+      // Verificar en memoria si alguien lo ocupó justo antes
+      const alreadyTaken = allReservations.some(r => r.id === docId);
+      if (alreadyTaken) {
+        showToast("Este horario acaba de ser reservado por otro usuario.", "error");
+        closeModal('booking-modal');
+        return;
+      }
+
+      const dayInfo = activeWeek.weekDates[dayIndex];
+      const courtInfo = COURTS_CONFIG[selectedCourt];
+      const reservationData = {
+        weekKey: activeWeek.weekKey,
+        courtId: selectedCourt,
+        courtName: courtInfo.name,
+        dayIndex,
+        dayName: dayInfo.dayName,
+        dateStr: dayInfo.fullDate,
+        hour,
+        durationHours: 2,
+        timeRange: formatHourRange(hour),
+        customerName,
+        customerPhone,
+        customerEmail,
+        paymentMethod,
+        paymentRef,
+        status: 'pending', // Bloqueado temporalmente en espera de verificación
+        userId: currentUser.uid,
+        createdAt: new Date().toISOString()
+      };
+
+      try {
+        await setDoc(doc(getReservationsCollectionRef(), docId), reservationData);
+        closeModal('booking-modal');
+        document.getElementById('booking-form').reset();
+        showToast("¡Reserva creada! El horario quedó bloqueado temporalmente en espera de pago.", "success");
+      } catch (error) {
+        console.error("Error guardando reserva:", error);
+        showToast("No se pudo registrar la reserva. Verifica tu conexión.", "error");
+      }
+    };
+
+    // 9. Ver Detalles de un Horario Ocupado / Notificar Pago
+    window.openSlotDetailModal = function(docId) {
+      const res = allReservations.find(r => r.id === docId);
+      if (!res) return;
+
+      const badge = document.getElementById('detail-status-badge');
+      const title = document.getElementById('detail-title');
+      const subtitle = document.getElementById('detail-subtitle');
+      const content = document.getElementById('detail-content');
+      const notifyForm = document.getElementById('notify-payment-form');
+      const adminActions = document.getElementById('detail-admin-actions');
+
+      const courtLabel = COURTS_CONFIG[res.courtId]?.name || res.courtName || res.courtId;
+      title.textContent = `${res.dayName} ${res.dateStr}`;
+      subtitle.textContent = `${res.timeRange} (2 Horas) • ${courtLabel}`;
+
+      if (res.status === 'pending') {
+        badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40";
+        badge.textContent = "Bloqueado Temporalmente • Pendiente de Pago";
+      } else {
+        badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40";
+        badge.textContent = "Alquilado • Confirmado y Bloqueado";
+      }
+
+      // Mostrar datos de contacto completos al administrador o al dueño de la reserva
+      const isOwnerOrAdmin = currentRole === 'admin' || (currentUser && res.userId === currentUser.uid);
+
+      content.innerHTML = `
+        <div class="flex justify-between"><span class="text-slate-400">Reservado por:</span> <span class="font-semibold text-white">${res.customerName}</span></div>
+        ${isOwnerOrAdmin ? `
+          <div class="flex justify-between"><span class="text-slate-400">Teléfono:</span> <span class="text-white">${res.customerPhone}</span></div>
+          <div class="flex justify-between"><span class="text-slate-400">Correo:</span> <span class="text-white">${res.customerEmail}</span></div>
+          <div class="flex justify-between"><span class="text-slate-400">Método de Pago:</span> <span class="text-amber-300">${res.paymentMethod || 'No especificado'}</span></div>
+          <div class="flex justify-between"><span class="text-slate-400">Referencia:</span> <span class="font-mono text-emerald-400">${res.paymentRef || 'Sin reportar aún'}</span></div>
+        ` : `
+          <p class="text-[11px] text-slate-400 italic pt-1">Este horario se encuentra reservado. Si eres el titular, inicia sesión con tu cuenta para reportar tu pago.</p>
+        `}
+      `;
+
+      // Mostrar formulario de notificación de pago si está pendiente
+      if (res.status === 'pending') {
+        notifyForm.classList.remove('hidden');
+        document.getElementById('notify-doc-id').value = res.id;
+        document.getElementById('notify-ref').value = res.paymentRef || '';
+      } else {
+        notifyForm.classList.add('hidden');
+      }
+
+      // Mostrar botones de administración si está en modo Administrador autenticado
+      if (currentRole === 'admin' && isAdminAuthenticated) {
+        adminActions.classList.remove('hidden');
+        const btnConfirm = document.getElementById('detail-btn-confirm');
+        const btnRelease = document.getElementById('detail-btn-release');
+
+        btnConfirm.style.display = res.status === 'pending' ? 'block' : 'none';
+        btnConfirm.onclick = () => { confirmReservationPayment(res.id); closeModal('slot-detail-modal'); };
+        btnRelease.onclick = () => { releaseReservationSlot(res.id); closeModal('slot-detail-modal'); };
+      } else {
+        adminActions.classList.add('hidden');
+      }
+
+      openModal('slot-detail-modal');
+    };
+
+    window.handleNotifyPayment = async function(event) {
+      event.preventDefault();
+      if (!currentUser) return;
+
+      const docId = document.getElementById('notify-doc-id').value;
+      const paymentMethod = document.getElementById('notify-method').value;
+      const paymentRef = document.getElementById('notify-ref').value.trim();
+
+      try {
+        await updateDoc(doc(getReservationsCollectionRef(), docId), {
+          paymentMethod,
+          paymentRef,
+          paymentNotifiedAt: new Date().toISOString()
+        });
+        closeModal('slot-detail-modal');
+        showToast("Notificación de pago enviada al administrador.", "success");
+      } catch (error) {
+        console.error("Error notificando pago:", error);
+        showToast("No se pudo actualizar la referencia de pago.", "error");
+      }
+    };
+
+    // 10. Modal "Mis Reservas" para acceso rápido del usuario
+    window.openMyReservationsModal = function() {
+      const list = document.getElementById('my-reservations-list');
+      const weekRes = allReservations.filter(r => r.weekKey === activeWeek.weekKey && currentUser && r.userId === currentUser.uid);
+
+      if (weekRes.length === 0) {
+        list.innerHTML = `
+          <div class="text-center py-8 text-slate-400 text-xs">
+            <i class="fa-regular fa-calendar-xmark text-2xl mb-2 text-slate-600"></i>
+            <p>Aún no has realizado solicitudes de cancha en esta sesión durante la semana actual.</p>
+          </div>
+        `;
+      } else {
+        list.innerHTML = weekRes.map(r => `
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-3.5 flex items-center justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-white text-xs">${r.dayName} ${r.dateStr}</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold ${r.status === 'confirmed' ? 'bg-rose-500/20 text-rose-300' : 'bg-amber-500/20 text-amber-300'}">
+                  ${r.status === 'confirmed' ? 'Confirmado' : 'Pendiente de Pago'}
+                </span>
+              </div>
+              <p class="text-xs text-slate-400 mt-0.5">${r.timeRange} • Ref: <span class="text-emerald-400 font-mono">${r.paymentRef || 'Sin reportar'}</span></p>
+            </div>
+            <button onclick="closeModal('my-reservations-modal'); openSlotDetailModal('${r.id}')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-white font-semibold">
+              ${r.status === 'pending' ? 'Notificar Pago' : 'Ver'}
+            </button>
+          </div>
+        `).join('');
+      }
+      openModal('my-reservations-modal');
+    };
+
+    // 11. Panel y Acciones del Administrador
+    window.renderAdminTable = function() {
+      const tbody = document.getElementById('admin-reservations-body');
+      const filterStatus = document.getElementById('admin-filter-status').value;
+
+      let list = getActiveWeekReservations();
+      if (filterStatus !== 'all') {
+        list = list.filter(r => r.status === filterStatus);
+      }
+
+      // Ordenar por día (Lunes a Domingo) y luego por hora
+      list.sort((a, b) => (a.dayIndex - b.dayIndex) || (a.hour - b.hour));
+
+      if (list.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" class="p-8 text-center text-slate-500 text-xs">
+              No hay reservas registradas bajo este filtro para la semana actual.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = list.map(res => {
+        const isPending = res.status === 'pending';
+        return `
+          <tr class="hover:bg-slate-800/40 transition-colors">
+            <td class="p-3.5">
+              <div class="font-bold text-white">${res.dayName} <span class="text-slate-400 font-normal">(${res.dateStr})</span></div>
+              <div class="text-xs text-emerald-400 font-medium">${res.timeRange}</div>
+            </td>
+            <td class="p-3.5">
+              <div class="font-semibold text-white">${res.customerName}</div>
+              <div class="text-xs text-slate-400">${res.customerPhone} • ${res.customerEmail}</div>
+            </td>
+            <td class="p-3.5">
+              ${isPending 
+                ? `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30"><span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span> Pendiente</span>`
+                : `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30"><i class="fa-solid fa-lock text-[10px]"></i> Alquilado</span>`
+              }
+            </td>
+            <td class="p-3.5">
+              <div class="text-xs font-medium text-slate-200">${res.paymentMethod || 'Sin método'}</div>
+              <div class="text-xs font-mono ${res.paymentRef ? 'text-emerald-400 font-bold' : 'text-slate-500'}">
+                ${res.paymentRef ? `Ref: ${res.paymentRef}` : 'Esperando notificación'}
+              </div>
+            </td>
+            <td class="p-3.5 text-right space-x-1.5 whitespace-nowrap">
+              ${isPending ? `
+                <button onclick="confirmReservationPayment('${res.id}')" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow transition" title="Comprobar pago y bloquear definitivamente">
+                  <i class="fa-solid fa-check mr-1"></i> Confirmar Alquiler
+                </button>
+              ` : ''}
+              <button onclick="releaseReservationSlot('${res.id}')" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold transition" title="Cancelar reserva y liberar horario">
+                <i class="fa-solid fa-unlock mr-1"></i> Liberar
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    };
+
+    // Confirmar pago y bloquear completamente el horario
+    window.confirmReservationPayment = async function(docId) {
+      if (!currentUser || !isAdminAuthenticated) {
+        showToast("Acceso denegado. Inicia sesión como Administrador.", "error");
+        return;
+      }
+      try {
+        await updateDoc(doc(getReservationsCollectionRef(), docId), {
+          status: 'confirmed',
+          confirmedAt: new Date().toISOString(),
+          confirmedBy: currentUser.uid
+        });
+        showToast("Pago verificado. El bloque de 2 horas ha sido bloqueado definitivamente.", "success");
+      } catch (error) {
+        console.error("Error confirmando alquiler:", error);
+        showToast("Error al confirmar el alquiler.", "error");
+      }
+    };
+
+    // Rechazar o liberar espacio para que vuelva a estar Disponible
+    window.releaseReservationSlot = async function(docId) {
+      if (!currentUser || !isAdminAuthenticated) {
+        showToast("Acceso denegado. Inicia sesión como Administrador.", "error");
+        return;
+      }
+      try {
+        await deleteDoc(doc(getReservationsCollectionRef(), docId));
+        showToast("Espacio liberado. El horario vuelve a estar disponible.", "info");
+      } catch (error) {
+        console.error("Error liberando espacio:", error);
+        showToast("Error al liberar el horario.", "error");
+      }
+    };
+
+    // Limpieza Semanal (Al finalizar el domingo para iniciar nueva semana)
+    window.executeWeeklyCleanup = async function() {
+      if (!currentUser || !isAdminAuthenticated) {
+        showToast("Acceso denegado. Inicia sesión como Administrador.", "error");
+        return;
+      }
+      try {
+        const snapshot = await getDocs(getReservationsCollectionRef());
+        const deletePromises = [];
+        snapshot.forEach((docSnap) => {
+          deletePromises.push(deleteDoc(doc(getReservationsCollectionRef(), docSnap.id)));
+        });
+        await Promise.all(deletePromises);
+        closeModal('reset-week-modal');
+        showToast("Base de datos semanal limpiada. ¡Nueva semana lista para reservas!", "success");
+      } catch (error) {
+        console.error("Error en limpieza semanal:", error);
+        showToast("Ocurrió un error al limpiar los registros semanales.", "error");
+      }
+    };
+
+    // 12. Estadísticas y Controles de UI + Seguridad de Administrador
+    function updateStats() {
+      const weekRes = getActiveWeekReservations();
+      const pendingCount = weekRes.filter(r => r.status === 'pending').length;
+      const confirmedCount = weekRes.filter(r => r.status === 'confirmed').length;
+      
+      // Calcular el total exacto de bloques habilitados en la semana para la cancha activa
+      let totalEnabledSlots = 0;
+      for (let d = 0; d < 7; d++) {
+        for (const h of TIME_SLOTS) {
+          if (isSlotEnabled(selectedCourt, d, h)) totalEnabledSlots++;
+        }
+      }
+      const availableCount = Math.max(0, totalEnabledSlots - (pendingCount + confirmedCount));
+
+      document.getElementById('stat-pending').textContent = pendingCount;
+      document.getElementById('stat-confirmed').textContent = confirmedCount;
+      document.getElementById('stat-available').textContent = availableCount;
+
+      const badge = document.getElementById('pending-counter-badge');
+      if (pendingCount > 0) {
+        badge.textContent = pendingCount;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+
+    // Solicitar acceso al panel de administrador (pide clave si no está autenticado)
+    window.requestAdminAccess = function() {
+      if (isAdminAuthenticated) {
+        switchRole('admin');
+      } else {
+        document.getElementById('admin-pin-input').value = '';
+        openModal('admin-login-modal');
+        setTimeout(() => document.getElementById('admin-pin-input').focus(), 100);
+      }
+    };
+
+    window.handleAdminPinSubmit = function(event) {
+      event.preventDefault();
+      const enteredPin = document.getElementById('admin-pin-input').value.trim();
+      if (enteredPin === adminAccessPin) {
+        isAdminAuthenticated = true;
+        closeModal('admin-login-modal');
+        switchRole('admin');
+        showToast("Clave verificada. Acceso de Administrador concedido.", "success");
+      } else {
+        showToast("Clave de administrador incorrecta.", "error");
+        document.getElementById('admin-pin-input').value = '';
+        document.getElementById('admin-pin-input').focus();
+      }
+    };
+
+    window.handleUpdateAdminPin = async function(event) {
+      event.preventDefault();
+      if (!isAdminAuthenticated || !currentUser) return;
+      const newPin = document.getElementById('new-admin-pin-input').value.trim();
+      if (newPin.length < 4) return;
+
+      try {
+        await setDoc(getAdminConfigDocRef(), {
+          pin: newPin,
+          updatedAt: new Date().toISOString(),
+          updatedBy: currentUser.uid
+        });
+        adminAccessPin = newPin;
+        document.getElementById('new-admin-pin-input').value = '';
+        closeModal('change-pin-modal');
+        showToast("Clave de administrador actualizada correctamente.", "success");
+      } catch (error) {
+        console.error("Error guardando clave admin:", error);
+        showToast("No se pudo guardar la nueva clave en la nube.", "error");
+      }
+    };
+
+    window.logoutAdmin = function() {
+      isAdminAuthenticated = false;
+      switchRole('user');
+      showToast("Sesión de administrador cerrada.", "info");
+    };
+
+    window.switchRole = function(role) {
+      if (role === 'admin' && !isAdminAuthenticated) {
+        requestAdminAccess();
+        return;
+      }
+
+      currentRole = role;
+      const btnUser = document.getElementById('btn-role-user');
+      const btnAdmin = document.getElementById('btn-role-admin');
+      const adminPanel = document.getElementById('admin-panel');
+      const lockIcon = document.getElementById('admin-lock-icon');
+
+      if (role === 'admin') {
+        btnAdmin.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 bg-emerald-600 text-white shadow";
+        btnUser.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 text-slate-400 hover:text-white";
+        lockIcon.className = "fa-solid fa-shield-halved text-white";
+        adminPanel.classList.remove('hidden');
+      } else {
+        btnUser.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 bg-emerald-600 text-white shadow";
+        btnAdmin.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 text-slate-400 hover:text-white";
+        lockIcon.className = isAdminAuthenticated ? "fa-solid fa-shield-halved text-emerald-400" : "fa-solid fa-lock text-amber-400";
+        adminPanel.classList.add('hidden');
+      }
+    };
+
+    window.changeCourt = function(courtId) {
+      selectedCourt = courtId;
+      const courtInfo = COURTS_CONFIG[courtId];
+      document.getElementById('court-schedule-hint').textContent = courtInfo.scheduleHint;
+      document.getElementById('calendar-court-title').textContent = `Calendario Semanal • ${courtInfo.name}`;
+      renderCalendar();
+      renderAdminTable();
+      updateStats();
+    };
+
+    window.setAuthAction = function(mode) {
+      authActionMode = mode;
+    };
+
+    window.handleEmailAuth = async function(event) {
+      event.preventDefault();
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-password').value;
+
+      try {
+        if (authActionMode === 'register') {
+          await createUserWithEmailAndPassword(auth, email, password);
+          showToast("Cuenta creada e iniciada correctamente.", "success");
+        } else {
+          await signInWithEmailAndPassword(auth, email, password);
+          showToast("Sesión iniciada correctamente.", "success");
+        }
+        closeModal('auth-modal');
+      } catch (error) {
+        console.error("Error de autenticación:", error);
+        showToast("Verifica tus credenciales o intenta con otro correo.", "error");
+      }
+    };
+
+    window.openModal = function(id) {
+      document.getElementById(id).classList.remove('hidden');
+    };
+
+    window.closeModal = function(id) {
+      document.getElementById(id).classList.add('hidden');
+    };
+
+    // Arrancar la autenticación e interfaz
+    initFirebaseAuth();
+  </script>
+</body>
+</html>
